@@ -1,0 +1,29 @@
+#!/bin/bash -e
+ip=$1
+user=$2
+
+if [ -z "$ip" ] || [ -z "$user" ]
+then
+    echo "Usage: $(basename $0) <vpn IP> <user name>"
+    exit 1
+fi
+
+echo "Available rules"
+echo "[1] choice 1"
+echo "[2] choice 2"
+read -p "Your choice: " choice
+
+if [ $choice -lt 1 ] || [ $choice -gt 2 ]
+then
+    echo "Choice is incorrect ($choice)"
+    exit 2
+elif [ $choice -eq 1 ]
+then
+    iptables ....
+elif [ $choice -eq 2 ]
+then
+    iptables ...
+fi
+
+echo "Check that the iptables rules (iptables -nvL) are correct and save them with:"
+echo "iptables-save > /etc/iptables/rules.v4"

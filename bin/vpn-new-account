@@ -1,0 +1,90 @@
+#!/bin/bash
+# Author: Julien Miotte <j.m@majerti.fr>
+
+set -e
+set -u
+
+# Configuration
+VPN_NAME=<VPN-NAME>
+WORKDIR=/etc/openvpn/easy-rsa
+PUBLIC_IP=<PUBLIC_IP>
+PUBLIC_PORT=<PUBLIC_PORT>
+
+echo "Enter the name or hostname of the account (will be used to register the key):"
+read account_name
+
+if [ -z $account_name ]; then
+    echo "Please provide an account name"
+    exit 2
+fi
+
+MYKEYDIR=~/PKI/vpn-$account_name
+
+if [ -d ${MYKEYDIR} ]
+then
+    echo "Certs already generated. Remove ${MYKEYDIR} if you wish to proceed"
+    exit 3
+fi
+# generate key for user (or simply give the command to do so)
+cd ${WORKDIR}
+user=$(whoami)
+
+#echo "Password protected? (y/n)"
+#read password_protected
+
+#if [ -z "$password_protected" ]; then
+#    echo "Invalid answer";
+#    exit 4;
+#elif [ "$password_protected" == "y" ]; then
+#    sudo su -c "source ./vars; KEY_NAME=\"${VPN_NAME} ${account_name} account\" ./build-key-pass $account_name";
+#elif [ "$password_protected" == "n" ]; then
+    sudo su -c "source ./vars; KEY_NAME=\"${VPN_NAME} ${account_name} account\" ./build-key $account_name";
+#else
+#    echo "Invalid answer";
+#    exit 4;
+#fi
+
+# copy the files to ~ and give the user the info (including ca.crt)
+mkdir ${MYKEYDIR}
+sudo cp ${WORKDIR}/keys/${account_name}.crt ${WORKDIR}/keys/${account_name}.key ${WORKDIR}/keys/ca.crt ${MYKEYDIR}
+sudo mv ${MYKEYDIR}/ca.crt ${MYKEYDIR}/${VPN_NAME}-ca.crt
+sudo mv ${MYKEYDIR}/${account_name}.crt ${MYKEYDIR}/${VPN_NAME}-${account_name}.crt
+sudo mv ${MYKEYDIR}/${account_name}.key ${MYKEYDIR}/${VPN_NAME}-${account_name}.key
+
+USER=`whoami`
+
+# give the majertnet.ovpn file
+cat > ${MYKEYDIR}/${VPN_NAME}.ovpn <<ENDOFCONF
+client
+dev tun
+port ${PUBLIC_PORT}
+proto tcp
+
+cipher AES-256-CBC
+remote ${PUBLIC_IP} ${PUBLIC_PORT}
+nobind
+
+ca ./${VPN_NAME}-ca.crt
+cert ./${VPN_NAME}-$account_name.crt
+key ./${VPN_NAME}-$account_name.key
+remote-cert-tls server
+
+comp-lzo
+persist-key
+persist-tun
+
+verb 3
+ENDOFCONF
+
+# Choose a host id for VPN address
+NEXT_ID=$(cat /etc/openvpn/next_host_id)
+
+# Generate ccd file
+echo "ifconfig-push 10.9.10.${NEXT_ID} 10.9.10.$((${NEXT_ID} - 1))" > /etc/openvpn/ccd/${account_name}
+
+ACCOUNT_IP=10.9.10.${NEXT_ID}
+
+# Bump the NEXT_ID
+echo $((NEXT_ID + 4)) > /etc/openvpn/next_host_id
+
+/usr/local/bin/vpn-set-password-and-send-email $account_name

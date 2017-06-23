@@ -1,0 +1,44 @@
+#!/root/.venvs/vpnlog/bin/python
+# Needs the tabulate distribution
+import re
+from tabulate import tabulate
+
+VPN_NAME=<VPN_NAME>
+
+TSTAMP = "(\w{3} \d{2} \d{2}:\d{2}:\d{2}) {} ovpn-server\[\d+\]:".format(VPN_NAME)
+START_REGEXP =  TSTAMP + " (\d+\.\d+.\d+\.\d+):\d+ \[(\w+)\] Peer Connection Initiated.*"
+END_REGEXP = TSTAMP + " (\w+)\/(\d+\.\d+.\d+\.\d+):\d+ .*client-instance restarting.*"
+
+users = {}
+
+with open("/var/log/daemon.log") as handle:
+    for line in handle.readlines():
+        if re.search("VPN_NAME ovpn-server", line):
+            match = re.search(START_REGEXP, line.strip())
+            if match:
+                timestamp, ipaddr, user = match.groups()
+                if user not in users:
+                    users[user] = []
+                users[user].append({'start': timestamp})
+            else:
+                match = re.search(END_REGEXP, line.strip())
+                if match:
+                    timestamp, user, ipaddr = match.groups()
+                    if user not in users:
+                        print("Not in users", user)
+                        pass
+                    users[user][-1]['end'] = timestamp
+
+with open("/etc/openvpn/log/openvpn-status.log") as handle:
+    lines = handle.read()
+    for user, stamps in users.items():
+        if user in lines:
+            stamps[-1]['end'] = ' - connected'
+
+results = [["User", "Start", "End"]]
+for user in sorted(users.keys()):
+    for logline in users[user]:
+        start = logline['start']
+        end = logline.get('end', '-')
+        results.append([user, start, end])
+print(tabulate(results))
